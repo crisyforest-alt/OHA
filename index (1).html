@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ping Pong</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef1f4;--ink:#14202e;--mute:#5a6b7d;--btn:#e8541e;--btn-ink:#fff;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e141b;--ink:#eaf0f6;--mute:#8da0b3;--btn:#ff7a3d;--btn-ink:#14100c;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e141b;--ink:#eaf0f6;--mute:#8da0b3;--btn:#ff7a3d;--btn-ink:#14100c;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:20px 16px}
+.score{display:flex;align-items:baseline;gap:20px;font-weight:800;font-size:clamp(2.4rem,9vw,4.5rem);line-height:1;font-variant-numeric:tabular-nums}
+.score span.n{min-width:1.2ch;text-align:center}
+.score .who{font-size:1rem;font-weight:500;color:var(--mute)}
+.wrap{position:relative;width:100%;max-width:860px}
+canvas{display:block;width:100%;height:auto;border-radius:10px;touch-action:none;cursor:none;box-shadow:0 10px 30px rgba(10,30,60,.25)}
+.overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(10,25,55,.62);border-radius:10px;color:#fff;text-align:center;padding:16px}
+.overlay.hide{display:none}
+.overlay h1{margin:0;font-size:clamp(1.8rem,6vw,3rem);font-weight:800}
+.overlay p{margin:0;font-weight:500;opacity:.85;max-width:34ch}
+button{font:inherit;font-weight:800;font-size:1.1rem;background:var(--btn);color:var(--btn-ink);border:0;border-radius:999px;padding:12px 28px;cursor:pointer}
+button:focus-visible{outline:3px solid #fff;outline-offset:3px}
+.hint{margin:0;color:var(--mute);font-size:.95rem;text-align:center;max-width:60ch}
+</style>
+</head>
+<body>
+<div class="score" aria-live="polite"><span class="who">You</span><span class="n" id="ps">0</span><span class="n" id="cs">0</span><span class="who">CPU</span></div>
+<div class="wrap">
+  <canvas id="c" width="800" height="500" aria-label="Ping pong table"></canvas>
+  <div class="overlay" id="ov">
+    <h1 id="ovt">Ping Pong</h1>
+    <p id="ovp">First to 11, win by 2. Return the ball past the CPU.</p>
+    <button id="go">Start game</button>
+  </div>
+</div>
+<p class="hint">Move your mouse or drag on the table. On a keyboard, use W/S or the arrow keys.</p>
+<script>
+(function(){
+var cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=800,H=500;
+var ov=document.getElementById('ov'),go=document.getElementById('go');
+var ps=document.getElementById('ps'),cs=document.getElementById('cs');
+var PW=12,PH=84,R=8,MAXS=820;
+var pl={x:24,y:H/2},cp={x:W-24-PW,y:H/2,err:0};
+var ball={x:W/2,y:H/2,vx:0,vy:0},speed=400;
+var sc={p:0,c:0},phase='ready',timer=0,dirNext=1,keys={};
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function setPaddle(p,y){p.y=clamp(y,PH/2+6,H-PH/2-6);}
+function prepServe(){
+  var server=((sc.p+sc.c)>>1)%2===0?1:-1; // 1: player serves toward CPU
+  dirNext=server;ball.x=W/2;ball.y=H/2;ball.vx=ball.vy=0;speed=400;phase='serve';timer=.9;
+}
+function launch(){
+  ball.vx=dirNext*speed;ball.vy=(Math.random()*2-1)*140;phase='play';
+}
+function point(who){
+  if(who==='p')sc.p++;else sc.c++;
+  ps.textContent=sc.p;cs.textContent=sc.c;
+  var hi=Math.max(sc.p,sc.c);
+  if(hi>=11&&Math.abs(sc.p-sc.c)>=2){
+    phase='over';
+    document.getElementById('ovt').textContent=sc.p>sc.c?'You win':'CPU wins';
+    document.getElementById('ovp').textContent='Final score '+sc.p+' to '+sc.c+'.';
+    go.textContent='Play again';ov.classList.remove('hide');go.focus();
+  }else prepServe();
+}
+function start(){
+  sc.p=sc.c=0;ps.textContent=cs.textContent=0;
+  ov.classList.add('hide');setPaddle(pl,H/2);setPaddle(cp,H/2);prepServe();
+}
+function hit(p,dir){
+  var off=clamp((ball.y-p.y)/(PH/2),-1,1),a=off*0.9;
+  speed=Math.min(speed*1.06,MAXS);
+  ball.vx=dir*speed*Math.cos(a);ball.vy=speed*Math.sin(a);
+}
+function update(dt){
+  if(keys.up)setPaddle(pl,pl.y-520*dt);
+  if(keys.down)setPaddle(pl,pl.y+520*dt);
+  if(phase==='serve'){timer-=dt;if(timer<=0)launch();}
+  var target=(phase==='play'&&ball.vx>0)?ball.y+cp.err:H/2;
+  var step=clamp(target-cp.y,-340*dt,340*dt);
+  setPaddle(cp,cp.y+step);
+  if(phase!=='play')return;
+  ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;
+  if(ball.y<R){ball.y=R;ball.vy=Math.abs(ball.vy);}
+  if(ball.y>H-R){ball.y=H-R;ball.vy=-Math.abs(ball.vy);}
+  if(ball.vx<0&&ball.x-R<=pl.x+PW&&ball.x+R>=pl.x&&Math.abs(ball.y-pl.y)<=PH/2+R){
+    ball.x=pl.x+PW+R;hit(pl,1);cp.err=(Math.random()*2-1)*34;
+  }
+  if(ball.vx>0&&ball.x+R>=cp.x&&ball.x-R<=cp.x+PW&&Math.abs(ball.y-cp.y)<=PH/2+R){
+    ball.x=cp.x-R;hit(cp,-1);
+  }
+  if(ball.x<-R*2)point('c');
+  else if(ball.x>W+R*2)point('p');
+}
+function rrect(x,y,w,h,r){ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,w,h,r):ctx.rect(x,y,w,h);ctx.fill();}
+function draw(){
+  ctx.fillStyle='#1b4b9b';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#f4f7fb';ctx.lineWidth=4;ctx.strokeRect(10,10,W-20,H-20);
+  ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(W/2-60,H/2);ctx.lineTo(W/2+60,H/2);ctx.stroke();
+  ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(10,H/2);ctx.lineTo(W/2-60,H/2);ctx.moveTo(W/2+60,H/2);ctx.lineTo(W-10,H/2);ctx.stroke();
+  // net
+  ctx.setLineDash([10,8]);ctx.lineWidth=5;ctx.strokeStyle='rgba(255,255,255,.9)';
+  ctx.beginPath();ctx.moveTo(W/2,10);ctx.lineTo(W/2,H-10);ctx.stroke();ctx.setLineDash([]);
+  // paddles
+  ctx.fillStyle='#ff4d5a';rrect(pl.x,pl.y-PH/2,PW,PH,5);
+  ctx.fillStyle='#f2f2f2';rrect(cp.x,cp.y-PH/2,PW,PH,5);
+  // ball shadow + ball
+  ctx.fillStyle='rgba(0,0,0,.25)';ctx.beginPath();ctx.arc(ball.x+3,ball.y+4,R,0,7);ctx.fill();
+  ctx.fillStyle='#ffb020';ctx.beginPath();ctx.arc(ball.x,ball.y,R,0,7);ctx.fill();
+}
+var last=0;
+function frame(t){
+  var dt=Math.min((t-last)/1000||0,.033);last=t;
+  update(dt);draw();requestAnimationFrame(frame);
+}
+function pointerY(e){var r=cv.getBoundingClientRect();setPaddle(pl,(e.clientY-r.top)*H/r.height);}
+cv.addEventListener('pointermove',pointerY);
+cv.addEventListener('pointerdown',pointerY);
+addEventListener('keydown',function(e){
+  var k=e.key;
+  if(k==='ArrowUp'||k==='w'||k==='W'){keys.up=true;e.preventDefault();}
+  else if(k==='ArrowDown'||k==='s'||k==='S'){keys.down=true;e.preventDefault();}
+  else if((k===' '||k==='Enter')&&!ov.classList.contains('hide')&&document.activeElement!==go){start();e.preventDefault();}
+});
+addEventListener('keyup',function(e){
+  var k=e.key;
+  if(k==='ArrowUp'||k==='w'||k==='W')keys.up=false;
+  if(k==='ArrowDown'||k==='s'||k==='S')keys.down=false;
+});
+go.addEventListener('click',start);
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
